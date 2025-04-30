@@ -8,7 +8,7 @@ const app = express();
 const corsOptions = {
   origin: [
     'http://localhost:3000',
-    'https://a4c7-102-89-23-216.ngrok-free.app'
+    'https://centric-task.vercel.app'
 ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
