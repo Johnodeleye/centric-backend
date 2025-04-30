@@ -70,6 +70,24 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get('/db-status', async (req, res) => {
+  try {
+    // Test a simple query
+    await mongoose.connection.db.admin().ping();
+    res.json({
+      status: "connected",
+      dbName: mongoose.connection.name,
+      collections: await mongoose.connection.db.listCollections().toArray()
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "disconnected",
+      error: err.message,
+      connectionString: process.env.MONGODB_URI ? "exists" : "missing"
+    });
+  }
+});
+
 // Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
