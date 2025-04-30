@@ -37,13 +37,23 @@ mongoose.connection.on('disconnected', () => {
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000, // 5 seconds timeout for initial connection
-      socketTimeoutMS: 45000, // 45 seconds timeout for queries
-    });
+    // Explicitly create connection
+    await mongoose.createConnection(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 30000,
+      connectTimeoutMS: 30000
+    }).asPromise();
+    
+    console.log("✅ MongoDB connected!");
+    return true;
   } catch (error) {
-    console.error("❌ MongoDB connection failed!", error);
-    process.exit(1);
+    console.error("❌ MongoDB connection failed:", error.message);
+    // More detailed error logging
+    console.log("Connection details:", {
+      host: error.host,
+      reason: error.reason ? error.reason : 'No additional error info'
+    });
+    return false;
   }
 };
 
@@ -72,8 +82,13 @@ app.get("/health", (req, res) => {
 
 app.get('/db-status', async (req, res) => {
   try {
-    // Test a simple query
+    if (!mongoose.connection.readyState) {
+      throw new Error("No active database connection");
+    }
+    
+    // Test connection with a ping
     await mongoose.connection.db.admin().ping();
+    
     res.json({
       status: "connected",
       dbName: mongoose.connection.name,
@@ -83,10 +98,23 @@ app.get('/db-status', async (req, res) => {
     res.status(500).json({
       status: "disconnected",
       error: err.message,
+      connectionState: mongoose.STATES[mongoose.connection.readyState],
       connectionString: process.env.MONGODB_URI ? "exists" : "missing"
     });
   }
 });
+
+
+
+app.get('/debug-connection', (req, res) => {
+  res.json({
+    connectionString: process.env.MONGODB_URI 
+      ? process.env.MONGODB_URI.replace(/\/\/[^@]+@/, '//****:****@')
+      : 'missing'
+  });
+});
+
+
 
 // Start Server
 const PORT = process.env.PORT || 5000;
