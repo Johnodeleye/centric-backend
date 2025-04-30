@@ -20,14 +20,19 @@ app.use(express.json());
 // Database connection status tracking
 let isDBConnected = false;
 
+// Improved connection event listeners
+mongoose.connection.on('connecting', () => {
+  console.log('🔄 Attempting MongoDB connection...');
+});
+
 mongoose.connection.on('connected', () => {
   isDBConnected = true;
-  console.log("✅ MongoDB connected!");
+  console.log("✅ MongoDB connected to DB:", mongoose.connection.name);
 });
 
 mongoose.connection.on('error', (err) => {
   isDBConnected = false;
-  console.error("❌ MongoDB connection error:", err);
+  console.error("❌ MongoDB connection error:", err.message);
 });
 
 mongoose.connection.on('disconnected', () => {
@@ -35,25 +40,28 @@ mongoose.connection.on('disconnected', () => {
   console.log("ℹ️ MongoDB disconnected");
 });
 
+// Proper connection function
 const connectDB = async () => {
+  // Skip if already connected
+  if (mongoose.connection.readyState === 1) return;
+
   try {
-    // Explicitly create connection
-    await mongoose.createConnection(process.env.MONGODB_URI, {
+    await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 30000,
-      connectTimeoutMS: 30000
-    }).asPromise();
-    
-    console.log("✅ MongoDB connected!");
-    return true;
+      connectTimeoutMS: 30000,
+      retryWrites: true,
+      w: 'majority'
+    });
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error.message);
-    // More detailed error logging
-    console.log("Connection details:", {
+    console.error("Full error details:", {
+      name: error.name,
+      code: error.code,
       host: error.host,
-      reason: error.reason ? error.reason : 'No additional error info'
+      reason: error.reason || 'No additional error info'
     });
-    return false;
+    process.exit(1); // Exit process on connection failure
   }
 };
 
@@ -63,62 +71,66 @@ app.use('/api/tasks', require('./routes/taskRoutes'));
 
 // Enhanced root endpoint
 app.get("/", (req, res) => {
-  const status = {
+  res.json({
     api: "running",
     database: isDBConnected ? "connected" : "not connected",
+    connectionState: mongoose.STATES[mongoose.connection.readyState],
     timestamp: new Date().toISOString()
-  };
-  res.json(status);
-});
-
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.json({
-    status: isDBConnected ? "healthy" : "unhealthy",
-    database: isDBConnected ? "connected" : "disconnected",
-    uptime: process.uptime()
   });
 });
 
-app.get('/db-status', async (req, res) => {
+// Comprehensive health check
+app.get("/health", async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
-      throw new Error("No active database connection");
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error("Database not connected");
     }
-    
-    // Test connection with a ping
+
+    // Test with both ping and collection listing
     await mongoose.connection.db.admin().ping();
-    
+    const collections = await mongoose.connection.db.listCollections().toArray();
+
     res.json({
-      status: "connected",
+      status: "healthy",
       dbName: mongoose.connection.name,
-      collections: await mongoose.connection.db.listCollections().toArray()
+      collections: collections.map(c => c.name),
+      connectionState: mongoose.STATES[mongoose.connection.readyState]
     });
   } catch (err) {
     res.status(500).json({
-      status: "disconnected",
+      status: "unhealthy",
       error: err.message,
       connectionState: mongoose.STATES[mongoose.connection.readyState],
-      connectionString: process.env.MONGODB_URI ? "exists" : "missing"
+      uptime: process.uptime()
     });
   }
 });
 
-
-
+// Connection debug endpoint
 app.get('/debug-connection', (req, res) => {
   res.json({
     connectionString: process.env.MONGODB_URI 
       ? process.env.MONGODB_URI.replace(/\/\/[^@]+@/, '//****:****@')
-      : 'missing'
+      : 'missing',
+    mongooseState: mongoose.STATES[mongoose.connection.readyState],
+    mongooseVersion: mongoose.version
   });
 });
 
-
-
 // Start Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  await connectDB();
+  // Initialize DB connection
+  connectDB().catch(err => {
+    console.error("Failed to initialize database connection:", err);
+    process.exit(1);
+  });
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  await mongoose.connection.close();
+  console.log('MongoDB connection closed due to app termination');
+  process.exit(0);
 });
