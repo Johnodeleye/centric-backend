@@ -19,13 +19,64 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// Get all tasks
 exports.getAllTasks = async (req, res) => {
   try {
-    const tasks = await Task.find()
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 4;
+    const skip = (page - 1) * limit;
+
+    const [tasks, total] = await Promise.all([
+      Task.find()
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('createdBy', 'username avatar')
+        .populate('claimedBy', 'username avatar'),
+      Task.countDocuments()
+    ]);
+
+    res.json({
+      tasks,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get my tasks with pagination
+exports.getMyTasks = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 4;
+    const skip = (page - 1) * limit;
+
+    const [tasks, total] = await Promise.all([
+      Task.find({
+        $or: [
+          { createdBy: req.user.id },
+          { claimedBy: req.user.id }
+        ]
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .populate('createdBy', 'username avatar')
-      .populate('claimedBy', 'username avatar');
-    res.json(tasks);
+      .populate('claimedBy', 'username avatar'),
+      Task.countDocuments({
+        $or: [
+          { createdBy: req.user.id },
+          { claimedBy: req.user.id }
+        ]
+      })
+    ]);
+
+    res.json({
+      tasks,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -86,23 +137,7 @@ exports.unclaimTask = async (req, res) => {
   };
   
 
-// Get my tasks (created or claimed)
-exports.getMyTasks = async (req, res) => {
-  try {
-    const tasks = await Task.find({
-      $or: [
-        { createdBy: req.user.id },
-        { claimedBy: req.user.id }
-      ]
-    })
-    .populate('createdBy', 'username avatar')
-    .populate('claimedBy', 'username avatar');
 
-    res.json(tasks);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
 
 // Delete a task (only creator can delete)
 exports.deleteTask = async (req, res) => {
