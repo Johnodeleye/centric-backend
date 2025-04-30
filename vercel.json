@@ -11,8 +11,5 @@
         "src": "/(.*)",
         "dest": "server.js"
       }
-    ],
-    "env": {
-      "MONGODB_URI": "mongodb+srv://johnayomide920:AMzM5mjGVUSPxv65@cluster0.xm2f5s0.mongodb.net/CentricDB?retryWrites=true&w=majority"
-    }
+    ]
   }
