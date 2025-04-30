@@ -119,14 +119,28 @@ app.get('/debug-connection', (req, res) => {
 
 // Start Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  // Initialize DB connection
-  connectDB().catch(err => {
-    console.error("Failed to initialize database connection:", err);
-    process.exit(1);
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server running on port ${PORT}`);
+//   // Initialize DB connection
+//   connectDB().catch(err => {
+//     console.error("Failed to initialize database connection:", err);
+//     process.exit(1);
+//   });
+// });
+
+
+const startServer = async () => {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
   });
+};
+
+startServer().catch((err) => {
+  console.error("❌ Failed to start server:", err);
+  process.exit(1);
 });
+
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
